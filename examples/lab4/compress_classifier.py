@@ -59,6 +59,7 @@ import random
 import traceback
 from collections import OrderedDict
 from functools import partial
+import hyperopt as hp
 import numpy as np
 import torch
 import torch.nn as nn
@@ -128,8 +129,6 @@ parser.add_argument('--summary', type=str, choices=SUMMARY_CHOICES,
                     ' | '.join(SUMMARY_CHOICES))
 parser.add_argument('--compress', dest='compress', type=str, nargs='?', action='store',
                     help='configuration file for pruning the model (default is to use hard-coded schedule)')
-parser.add_argument('--hps', dest='hps', type=str, nargs='?', action='store',
-                    help='Using range config file for pruning the model')
 parser.add_argument('--sense', dest='sensitivity', choices=['element', 'filter', 'channel'],
                     help='test the sensitivity of layers to pruning')
 parser.add_argument('--extras', default=None, type=str,
@@ -285,9 +284,6 @@ def main():
     if args.compress:
         # The main use-case for this sample application is CNN compression. Compression
         # requires a compression schedule configuration file in YAML.
-        if args.hps:
-            pass
-        else:
         compression_scheduler = distiller.file_config(model, optimizer, args.compress)
         # Model is re-transferred to GPU in case parameters were added (e.g. PACTQuantizer)
         model.cuda()
