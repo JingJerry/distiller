@@ -40,6 +40,8 @@ parser.add_argument('-j', '--workers', default=1, type=int, metavar='N',
                     help='number of data loading workers (default: 1)')
 parser.add_argument('-b', '--batch-size', default=128, type=int,
                     metavar='N', help='mini-batch size (default: 128)')
+parser.add_argument('--gpus', metavar='DEV_ID', default=None,
+                    help='Comma-separated list of GPU device IDs to be used (default is to use all available devices)')
 parser.add_argument('--lr', '--learning-rate', default=0.01, type=float,
                     metavar='LR', help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
@@ -53,11 +55,24 @@ parser.add_argument('--deterministic', '--det', action='store_true',
 # Manual setting hyperparameters here
 args = parser.parse_args()
 args.dataset = 'cifar10' if 'cifar' in args.arch else 'imagenet'
-args.epochs = 20
-args.retrain_epoch = 15
-args.max_iters = 3
-
-model = create_model(args.pretrained, args.dataset, args.arch, 0)
+args.epochs = 2
+args.retrain_epoch = 1
+args.max_iters = 1
+if args.gpus is not None:
+	try:
+		args.gpus = [int(s) for s in args.gpus.split(',')]
+	except ValueError:
+		msglogger.error('ERROR: Argument --gpus must be a comma-separated list of integers only')
+		exit(1)
+	available_gpus = torch.cuda.device_count()
+	for dev_id in args.gpus:
+		if dev_id >= available_gpus:
+			msglogger.error('ERROR: GPU device ID {0} requested, but only {1} devices available'
+							.format(dev_id, available_gpus))
+			exit(1)
+	# Set default device in case the first one on the list != 0
+	torch.cuda.set_device(args.gpus[0])
+model = create_model(args.pretrained, args.dataset, args.arch, device_ids=args.gpus)
 train_loader, val_loader, test_loader, _ = apputils.load_data(
         args.dataset, os.path.expanduser(args.data), args.batch_size,
         args.workers, args.validation_size, args.deterministic)
@@ -181,12 +196,10 @@ def valid_latency(epoch):
     avg_latency = latency / valid_times
     return avg_latency
 def get_space():
-    keys = model.state_dict().keys()
     space = ({})
-    for key in keys:
-        if 'conv' in key and 'weight' in key:
-            space[key] = hp.uniform(key, 0.45, 0.55)
-
+    for name, parameter in model.named_parameters():
+        if 'conv' in name and 'weight' in name:
+            space[name] = hp.uniform(name, 0.45, 0.55)
     return space
 def main():
     space = get_space()
