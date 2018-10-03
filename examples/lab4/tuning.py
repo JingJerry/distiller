@@ -53,9 +53,9 @@ parser.add_argument('--deterministic', '--det', action='store_true',
 # Manual setting hyperparameters here
 args = parser.parse_args()
 args.dataset = 'cifar10' if 'cifar' in args.arch else 'imagenet'
-args.epochs = 30
-args.retrain_epoch = 25
-args.max_iters = 30
+args.epochs = 20
+args.retrain_epoch = 15
+args.max_iters = 3
 
 model = create_model(args.pretrained, args.dataset, args.arch, 0)
 train_loader, val_loader, test_loader, _ = apputils.load_data(
@@ -94,7 +94,7 @@ def objective(space):
     policy = distiller.PruningPolicy(pruner, pruner_args=None)
     lrpolicy = distiller.LRPolicy(torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1))
     compression_scheduler = distiller.CompressionScheduler(model)
-    compression_scheduler.add_policy(policy, epochs=[args.retraining_epoch])
+    compression_scheduler.add_policy(policy, epochs=[args.retrain_epoch])
     compression_scheduler.add_policy(lrpolicy, starting_epoch=0, ending_epoch=args.epochs, frequency=1)
     #TODO: Pruning and Validate process
     """
@@ -120,11 +120,17 @@ def objective(space):
         train_accuracy = train(i,criterion, optimizer, compression_scheduler)
         val_accuracy = valid_accuracy(i) # Validate hyperparameter setting
         latency = valid_latency(i)
+        t, total_sparsity = distiller.weights_sparsity_tbl_summary(model, return_total_sparsity=True)
         compression_scheduler.on_epoch_end(i, optimizer)
         apputils.save_checkpoint(i, args.arch, model, optimizer, compression_scheduler, train_accuracy, False,
                                          'hyperopt', './')
     score = (1-(val_accuracy/100.)) + (alpha * latency * 1000) # convert to ms 
-    print('{} trials: score: {}, train acc:{}, val acc:{}, latency:{}'.format(count, score, train_accuracy, val_accuracy, latency))
+    print('{} trials: score: {:.4f}\ttrain acc:{:.4f}\tval acc:{:.4f}\tlatency:{:.4f}\tsparsity:{:.4f}'.format(count, 
+                                                                                                          score, 
+                                                                                                          train_accuracy, 
+                                                                                                          val_accuracy, 
+                                                                                                          latency,
+                                                                                                          total_sparsity))
     return score
 def train(epoch,criterion, optimizer, compression_scheduler):
     correct = 0
