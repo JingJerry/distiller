@@ -39,7 +39,7 @@ import math
 import torch.utils.model_zoo as model_zoo
 
 
-__all__ = ['resnet20_cifar', 'resnet32_cifar', 'resnet44_cifar', 'resnet56_cifar']
+__all__ = ['resnet8_cifar', 'resnet20_cifar', 'resnet32_cifar', 'resnet44_cifar', 'resnet56_cifar']
 
 NUM_CLASSES = 10
 
@@ -148,6 +148,9 @@ class ResNetCifar(nn.Module):
         return x
 
 
+def resnet8_cifar(**kwargs):
+    model = ResNetCifar(BasicBlock, [1, 1, 1], **kwargs)
+    return model
 def resnet20_cifar(**kwargs):
     model = ResNetCifar(BasicBlock, [3, 3, 3], **kwargs)
     return model
