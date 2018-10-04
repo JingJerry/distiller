@@ -5,12 +5,15 @@ import math
 import numpy as np
 import argparse
 import time
+import datetime
 import os
 import sys
 import torch
 import torch.nn as nn
 import torch.optim
+from tensorboardX import SummaryWriter
 from torch.autograd import Variable
+writer = SummaryWriter('./logs/'+datetime.datetime.now().strftime("%Y-%m-%d.%H%M%S"))
 script_dir = os.path.dirname(__file__)
 module_path = os.path.abspath(os.path.join(script_dir, '..', '..'))
 try:
@@ -55,9 +58,9 @@ parser.add_argument('--deterministic', '--det', action='store_true',
 # Manual setting hyperparameters here
 args = parser.parse_args()
 args.dataset = 'cifar10' if 'cifar' in args.arch else 'imagenet'
-args.epochs = 2
-args.retrain_epoch = 1
-args.max_iters = 1
+args.epochs = 30
+args.retrain_epoch = 25
+args.max_iters = 10
 if args.gpus is not None:
 	try:
 		args.gpus = [int(s) for s in args.gpus.split(',')]
@@ -81,16 +84,16 @@ count = 0
 def objective(space):
     global count
     count += 1
-    # Objective function: F(Acc, Lat) = (1 - Acc.) + (alpha * Lat.)
+    # Objective function: F(Acc, Lat) = (1 - Acc.) + (alpha * Sparsity)
     accuracy = 0
     alpha = 0.2 # Super-parameter: the importance of inference time
-    inference_time = 0.0
+    latency = 0.0
+    sparsity = 0.0
     # Training hyperparameter
     criterion = nn.CrossEntropyLoss().cuda()
     optimizer = torch.optim.SGD(model.parameters(), lr=args.lr,
                                 momentum=args.momentum,
                                 weight_decay=args.weight_decay)
-    #TODO: Pruning Scheduler Initialize
     """
     distiller/distiller/config.py
         # Element-wise sparsity
@@ -100,7 +103,7 @@ def objective(space):
         scheduler = distiller.CompressionScheduler(model)
         scheduler.add_policy(policy, epochs=[0, 2, 4])
         # Structure sparsity and thinning
-        # TODO
+        Do yourself
     """
     sparsity_levels = {}
     for key, value in space.items():
@@ -111,7 +114,6 @@ def objective(space):
     compression_scheduler = distiller.CompressionScheduler(model)
     compression_scheduler.add_policy(policy, epochs=[args.retrain_epoch])
     compression_scheduler.add_policy(lrpolicy, starting_epoch=0, ending_epoch=args.epochs, frequency=1)
-    #TODO: Pruning and Validate process
     """
     distiller/example/classifier_compression/compress_classifier.py
     For each epoch:
@@ -135,19 +137,27 @@ def objective(space):
         train_accuracy = train(i,criterion, optimizer, compression_scheduler)
         val_accuracy = valid_accuracy(i) # Validate hyperparameter setting
         latency = valid_latency(i)
-        t, total_sparsity = distiller.weights_sparsity_tbl_summary(model, return_total_sparsity=True)
+        t, sparsity = distiller.weights_sparsity_tbl_summary(model, return_total_sparsity=True)
         compression_scheduler.on_epoch_end(i, optimizer)
         apputils.save_checkpoint(i, args.arch, model, optimizer, compression_scheduler, train_accuracy, False,
                                          'hyperopt', './')
-    score = (1-(val_accuracy/100.)) + (alpha * latency * 1000) # convert to ms 
+    score = (1-(val_accuracy/100.)) + (alpha * (1-sparsity/100.)) # normalize
     print('{} trials: score: {:.4f}\ttrain acc:{:.4f}\tval acc:{:.4f}\tlatency:{:.4f}\tsparsity:{:.4f}'.format(count, 
                                                                                                           score, 
                                                                                                           train_accuracy, 
                                                                                                           val_accuracy, 
                                                                                                           latency,
-                                                                                                          total_sparsity))
+                                                                                                          sparsity))
+    writer.add_scalar('score', score, count)
+    writer.add_scalar('train/accuracy', train_accuracy, count)
+    writer.add_scalar('validate/accuracy', val_accuracy, count)
+    writer.add_scalar('validate/latency', latency, count)
+    writer.add_scalar('validate/sparsity', sparsity, count)
+    for k, v in space.items():
+        writer.add_scalar(k+'/sparsity', v, count)
     return score
-def train(epoch,criterion, optimizer, compression_scheduler):
+
+def train(epoch, criterion, optimizer, compression_scheduler):
     correct = 0
     total = 0
     total_samples = len(train_loader.sampler)
@@ -205,5 +215,6 @@ def main():
     space = get_space()
     best = fmin(objective, space, algo=tpe.suggest, max_evals=args.max_iters)
     print(best)
+    writer.close()
 if __name__ == '__main__':
     main()
