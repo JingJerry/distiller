@@ -20,6 +20,7 @@ import torch.nn as nn
 from .quantizer import Quantizer
 from .q_utils import *
 import logging
+import copy
 msglogger = logging.getLogger()
 
 ###
@@ -166,6 +167,12 @@ class DorefaQuantizer(Quantizer):
                                               bits_weights=bits_weights, bits_overrides=bits_overrides,
                                               train_with_fp_copy=True, quantize_bias=quantize_bias)
 
+        self.model.quantizer_metadata = {'type': type(self),
+                                         'params': {'optimizer': optimizer,
+                                                    'bits_activations': bits_activations,
+                                                    'bits_weights': bits_weights,
+                                                    'bits_overrides': copy.deepcopy(bits_overrides),
+                                                    'quantize_bias': quantize_bias}}
         def relu_replace_fn(module, name, qbits_map):
             bits_acts = qbits_map[name].acts
             if bits_acts is None:
