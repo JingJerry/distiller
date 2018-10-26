@@ -25,6 +25,7 @@ import re
 import numpy as np
 import collections
 from copy import deepcopy
+from distutils.version import LooseVersion
 import torch
 import torchvision
 from torch.autograd import Variable
@@ -35,7 +36,27 @@ import pydot
 import distiller
 import logging
 msglogger = logging.getLogger(__name__)
+def run_pass(name, trace):
+    import torch
+    if isinstance(trace, torch._C.Graph):
+        graph = trace
+        set_graph = False
+    else:
+        set_graph = True
+        graph = trace.graph()
 
+    torch._C._jit_pass_lint(graph)
+    try:
+        result = getattr(torch._C, '_jit_pass_' + name)(graph)
+        if result is not None:
+            graph = result
+    except AttributeError:
+        pass
+    torch._C._jit_pass_lint(graph)
+
+    if set_graph:
+        trace.set_graph(graph)
+    return graph
 
 def onnx_name_2_pytorch_name(name, op_type):
     # Convert a layer's name from an ONNX name, to a PyTorch name
@@ -95,11 +116,17 @@ class SummaryGraph(object):
 
     def __init__(self, model, dummy_input):
         with torch.onnx.set_training(model, False):
-            trace, _ = jit.get_trace_graph(model, dummy_input.cuda())
-
+            trace, _ = torch.jit.get_trace_graph(model, dummy_input)
+            if LooseVersion(torch.__version__) >= LooseVersion("0.4.1"):
+                run_pass('cse', trace)
+                run_pass('canonicalize', trace)
+                run_pass('remove_expands', trace)
+            elif LooseVersion(torch.__version__) >= LooseVersion("0.4"):
+                torch.onnx._optimize_trace(trace, False)
+            else:       
+                torch.onnx._optimize_trace(trace)          
             # Let ONNX do the heavy lifting: fusing the convolution nodes; fusing the nodes
             # composing a GEMM operation; etc.
-            torch.onnx._optimize_trace(trace, False)
             graph = trace.graph()
             self.ops = {}
             self.params = {}
