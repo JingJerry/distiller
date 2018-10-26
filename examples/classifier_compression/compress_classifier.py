@@ -98,6 +98,9 @@ parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet18',
                     help='model architecture: ' +
                     ' | '.join(ALL_MODEL_NAMES) +
                     ' (default: resnet18)')
+parser.add_argument('--dataset', '-d', metavar='DATASET', default='cifar10',
+                    choices=['cifar10','cinic10', 'imagenet'],
+                    help='datasets(default: cifar10)')
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
 parser.add_argument('--epochs', default=90, type=int, metavar='N',
@@ -260,7 +263,8 @@ def main():
         torch.cuda.set_device(args.gpus[0])
 
     # Infer the dataset from the model name
-    args.dataset = 'cifar10' if 'cifar' in args.arch else 'imagenet'
+    # get from args
+    #args.dataset = 'cifar10' if 'cifar' in args.arch else 'imagenet'
     args.num_classes = 10 if args.dataset == 'cifar10' else 1000
 
     if args.earlyexit_thresholds:

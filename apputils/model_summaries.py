@@ -116,18 +116,18 @@ class SummaryGraph(object):
 
     def __init__(self, model, dummy_input):
         with torch.onnx.set_training(model, False):
-		    trace, _ = torch.jit.get_trace_graph(model, dummy_input.cuda())
-			# https://github.com/lanpa/tensorboardX/blob/6ba4badb6e46624874c6709102a288ea80611673/tensorboardX/pytorch_graph.py#L128
+            trace, _ = torch.jit.get_trace_graph(model, dummy_input.cuda())
+            # https://github.com/lanpa/tensorboardX/blob/6ba4badb6e46624874c6709102a288ea80611673/tensorboardX/pytorch_graph.py#L128
             # Let ONNX do the heavy lifting: fusing the convolution nodes; fusing the nodes
             # composing a GEMM operation; etc.
-			if LooseVersion(torch.__version__) >= LooseVersion("0.4.1"):
-				run_pass('cse', trace)
-				run_pass('canonicalize', trace)
-				run_pass('remove_expands', trace)
-			elif LooseVersion(torch.__version__) >= LooseVersion("0.4"):
-				torch.onnx._optimize_trace(trace, False)
-			else:
-				torch.onnx._optimize_trace(trace)
+            if LooseVersion(torch.__version__) >= LooseVersion("0.4.1"):
+                run_pass('cse', trace)
+                run_pass('canonicalize', trace)
+                run_pass('remove_expands', trace)
+            elif LooseVersion(torch.__version__) >= LooseVersion("0.4"):
+                torch.onnx._optimize_trace(trace, False)
+            else:
+                torch.onnx._optimize_trace(trace)
             graph = trace.graph()
             self.ops = {}
             self.params = {}

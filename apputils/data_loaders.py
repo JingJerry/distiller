@@ -26,7 +26,7 @@ import torchvision.datasets as datasets
 from torch.utils.data.sampler import SubsetRandomSampler
 import numpy as np
 
-DATASETS_NAMES = ['imagenet', 'cifar10']
+DATASETS_NAMES = ['imagenet', 'cifar10', 'cinic10']
 
 
 def load_data(dataset, data_dir, batch_size, workers, valid_size=0.1, deterministic=False):
@@ -46,6 +46,8 @@ def load_data(dataset, data_dir, batch_size, workers, valid_size=0.1, determinis
         return cifar10_load_data(data_dir, batch_size, workers, valid_size=valid_size, deterministic=deterministic)
     if dataset == 'imagenet':
         return imagenet_load_data(data_dir, batch_size, workers, valid_size=valid_size, deterministic=deterministic)
+    if dataset=='cinic10':
+        return cinic10_load_data(data_dir, batch_size, workers, valid_size=valid_size, deterministic=deterministic)
     print("FATAL ERROR: load_data does not support dataset %s" % dataset)
     exit(1)
 
@@ -194,3 +196,50 @@ def imagenet_load_data(data_dir, batch_size, num_workers, valid_size=0.1, determ
 
     # If validation split was 0 we use the test set as the validation set
     return train_loader, valid_loader or test_loader, test_loader, input_shape
+def cinic10_load_data(data_dir, batch_size, num_workers, valid_size=0, deterministic=False):
+    """Load the CINIC-10 dataset.
+        train
+        valid
+        test
+    """
+    train_dir = os.path.join(data_dir, 'train')
+    val_dir = os.path.join(data_dir, 'valid')
+    test_dir = os.path.join(data_dir, 'test')
+    normalize = transforms.Normalize(mean=[0.47889522, 0.47227842, 0.43047404],
+                                     std=[0.24205776, 0.23828046, 0.25874835])
+
+    train_dataset = datasets.ImageFolder(
+        train_dir,
+        transforms.Compose([
+            transforms.RandomCrop(32, padding=4),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            normalize,
+        ]))
+
+    worker_init_fn = __deterministic_worker_init_fn if deterministic else None
+
+    train_loader = torch.utils.data.DataLoader(train_dataset,
+                                               batch_size=batch_size,
+                                               shuffle=True,
+                                               num_workers=num_workers, pin_memory=True,
+                                               worker_init_fn=worker_init_fn)
+
+    valid_loader = torch.utils.data.DataLoader(
+        datasets.ImageFolder(test_dir, transforms.Compose([
+            transforms.ToTensor(),
+            normalize,
+        ])),
+        batch_size=batch_size,shuffle=False,
+        num_workers=num_workers, pin_memory=True)
+
+    test_loader = torch.utils.data.DataLoader(
+        datasets.ImageFolder(test_dir, transforms.Compose([
+            transforms.ToTensor(),
+            normalize,
+        ])),
+        batch_size=batch_size, shuffle=False,
+        num_workers=num_workers, pin_memory=True)
+
+    input_shape = __image_size(train_dataset)
+    return train_loader, valid_loader, test_loader, input_shape
