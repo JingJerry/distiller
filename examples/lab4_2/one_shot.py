@@ -129,17 +129,19 @@ def objective(space):
     for i in range(args.epochs):
         compression_scheduler.on_epoch_begin(i)
         train_accuracy = train(i,criterion, optimizer, compression_scheduler)
-        val_accuracy = valid_accuracy(i) # Validate hyperparameter setting
+        val_accuracy = validate() # Validate hyperparameter setting
         t, sparsity = distiller.weights_sparsity_tbl_summary(model, return_total_sparsity=True)
         compression_scheduler.on_epoch_end(i, optimizer)
         apputils.save_checkpoint(i, args.arch, model, optimizer, compression_scheduler, train_accuracy, False,
                                          'hyperopt', './')
-    score = (1-(val_accuracy/100.)) + (alpha * (1-sparsity/100.)) # normalize
-    print('{} trials: score: {:.4f}\ttrain acc:{:.4f}\tval acc:{:.4f}\tsparsity:{:.4f}'.format(count, 
-                                                                                               score, 
-                                                                                               train_accuracy, 
-                                                                                               val_accuracy, 
-                                                                                               sparsity))
+    test_accuracy = test() # Validate hyperparameter setting
+    score = (1-(val_accuracy/100.)) + (alpha * (1-sparsity/100.)) # objective funtion here
+    print('{} trials: score: {:.4f}\ttrain acc:{:.4f}\tval acc:{:.4f}\ttest acc:{:.4f}\tsparsity:{:.4f}'.format(count, 
+                                      score, 
+                                      train_accuracy, 
+                                      val_accuracy, 
+                                      test_accuracy,
+                                      sparsity))
     return score
 
 def train(epoch, criterion, optimizer, compression_scheduler):
@@ -164,7 +166,7 @@ def train(epoch, criterion, optimizer, compression_scheduler):
         compression_scheduler.on_minibatch_end(epoch, train_step, steps_per_epoch, optimizer)
     accuracy = 100. * correct / total    
     return accuracy
-def valid_accuracy(epoch):
+def validate():
     model.eval() 
     correct = 0
     total = 0
@@ -178,11 +180,24 @@ def valid_accuracy(epoch):
     accuracy = 100. * correct / total    
     return accuracy
     
+def test():
+    model.eval() 
+    correct = 0
+    total = 0
+    with torch.no_grad():
+        for test_step, (inputs, targets) in enumerate(test_loader):
+            inputs, targets = inputs.cuda(), targets.cuda()
+            outputs = model(inputs)
+            _, predicted = torch.max(outputs.data, 1)
+            total += targets.size(0)
+            correct += predicted.eq(targets.data).cpu().sum().data.numpy()
+    accuracy = 100. * correct / total    
+    return accuracy
 def get_space():
     space = {}
     for name, parameter in model.named_parameters():
         if 'conv' in name and 'weight' in name:
-            space[name] = hp.uniform(name, 0.5, 0.9)
+            space[name] = hp.uniform(name, 0.01, 0.99)
     return space
 
 def main():
