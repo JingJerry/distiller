@@ -138,10 +138,7 @@ def objective(space):
         apputils.save_checkpoint(i, args.arch, model, optimizer, compression_scheduler, train_accuracy, False,
                                          'hyperopt', './')
     test_accuracy = test() # Validate hyperparameter setting
-    if sparsity >= 67.5 and sparsity <= 72.5:
-        score = (1-(val_accuracy/100.)) + (alpha * (1-sparsity/100.)) # objective funtion here
-    else:
-        score = 2-(sparsity/100)
+    score = (1-(val_accuracy/100.)) + (alpha * (1-sparsity/100.)) # objective funtion here
     print('{} trials: score: {:.4f}\ttrain acc:{:.4f}\tval acc:{:.4f}\ttest acc:{:.4f}\tsparsity:{:.4f}'.format(count, 
                                       score, 
                                       train_accuracy, 
