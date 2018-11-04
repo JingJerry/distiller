@@ -37,8 +37,8 @@ parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet20_cifar',
                     ' (default: resnet20_cifar)')
 parser.add_argument('-r', '--rounds', default=10, type=int,
                     metavar='R', help='max rounds (default: 10)')
-parser.add_argument('--epochs', default=120, type=int,
-                    metavar='E', help='epochs (default: 120)')
+parser.add_argument('--epochs', default=30, type=int,
+                    metavar='E', help='epochs (default: 30)')
 parser.add_argument('-j', '--workers', default=1, type=int, metavar='N',
                     help='number of data loading workers (default: 1)')
 parser.add_argument('-b', '--batch-size', default=128, type=int,
@@ -51,7 +51,7 @@ parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                     help='momentum')
 parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float,
                     metavar='W', help='weight decay (default: 1e-4)')
-parser.add_argument('--validation-size', '--vs', type=float_range, default=0.1,
+parser.add_argument('--validation-size', '--vs', type=float_range, default=0,
                     help='Portion of training dataset to set aside for validation')
 parser.add_argument('--deterministic', '--det', action='store_true',
                     help='Ensure deterministic execution for re-producible results.')
@@ -69,17 +69,14 @@ if args.gpus is not None:
 			exit(1)
 	# Set default device in case the first one on the list != 0
 	torch.cuda.set_device(args.gpus[0])
-model = create_model(False, args.dataset, args.arch, device_ids=args.gpus) # Get arch state_dict
+model = create_model(False, args.dataset, args.arch, device_ids=args.gpus)
 train_loader, val_loader, test_loader, _ = apputils.load_data(
         args.dataset, os.path.expanduser(args.data), args.batch_size,
         args.workers, args.validation_size, args.deterministic)
 
 count = 0
 def objective(space):
-    global model
     global count
-    #Explore new model
-    model = create_model(False, args.dataset, args.arch, device_ids=args.gpus)
     count += 1
     # Objective function: F(Acc, Lat) = (1 - Acc.) + (alpha * Sparsity)
     accuracy = 0
@@ -107,10 +104,10 @@ def objective(space):
         sparsity_levels[key] = value
     pruner = distiller.pruning.SparsityLevelParameterPruner(name='sensitivity', levels=sparsity_levels)
     policy = distiller.PruningPolicy(pruner, pruner_args=None)
-    lrpolicy = distiller.LRPolicy(torch.optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1))
+    lrpolicy = distiller.LRPolicy(torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1))
     compression_scheduler = distiller.CompressionScheduler(model)
-    compression_scheduler.add_policy(policy, epochs=[90])
-    compression_scheduler.add_policy(lrpolicy, starting_epoch=0, ending_epoch=90, frequency=1)
+    compression_scheduler.add_policy(policy, epochs=[args.epochs/2])
+    compression_scheduler.add_policy(lrpolicy, starting_epoch=0, ending_epoch=args.epochs, frequency=1)
     """
     distiller/example/classifier_compression/compress_classifier.py
     For each epoch:
@@ -138,10 +135,7 @@ def objective(space):
         apputils.save_checkpoint(i, args.arch, model, optimizer, compression_scheduler, train_accuracy, False,
                                          'hyperopt', './')
     test_accuracy = test() # Validate hyperparameter setting
-    if sparsity >= 67.5 and sparsity <= 72.5:
-        score = (1-(val_accuracy/100.)) + (alpha * (1-sparsity/100.)) # objective funtion here
-    else:
-        score = 2-(sparsity/100)
+    score = (1-(val_accuracy/100.)) + (alpha * (1-sparsity/100.)) # objective funtion here
     print('{} trials: score: {:.4f}\ttrain acc:{:.4f}\tval acc:{:.4f}\ttest acc:{:.4f}\tsparsity:{:.4f}'.format(count, 
                                       score, 
                                       train_accuracy, 
